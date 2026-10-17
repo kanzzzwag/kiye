@@ -11,20 +11,34 @@
 <main>
 <section id="upload">
   <div class="card">
-    <label>API-ключ <input id="key" type="password" placeholder="X-API-Key"></label>
-    <div id="drop">Перетащите .mov сюда или <label class="link">выберите файл<input id="file" type="file" accept=".mov,.mp4" hidden></label></div>
+    <label>API-ключ <input id="key" type="password" placeholder="X-API-Key" autocomplete="off"></label>
+    <div id="drop"><span id="dropText">Перетащите .mov сюда или </span><label class="link">выберите файл<input id="file" type="file" accept=".mov,.mp4,video/quicktime,video/mp4" hidden></label></div>
     <div class="row">
-      <label>Касса (номер) <input id="desk" type="number" min="1"></label>
+      <label>Касса (номер) <input id="desk" type="number" min="1" inputmode="numeric"></label>
       <label>Начало записи <input id="recorded" type="datetime-local"></label>
     </div>
     <button id="go" disabled>Проверить</button>
-    <div id="status"></div>
+    <div id="progress" hidden>
+      <div class="bar"><div id="barFill"></div></div>
+      <div id="status" class="muted"></div>
+    </div>
+    <div id="error" class="error" hidden></div>
   </div>
   <div id="result"></div>
 </section>
 <section id="journal" hidden>
-  <div class="card"><button id="reload">Обновить</button>
-  <table><thead><tr><th>Дата и время</th><th>Тип</th><th>Таймкод</th><th>Норма</th><th>Кассир</th><th>Статус</th></tr></thead><tbody id="rows"></tbody></table></div>
+  <div class="card">
+    <div class="filters">
+      <label>С <input id="fFrom" type="date"></label>
+      <label>По <input id="fTo" type="date"></label>
+      <label>Тип <select id="fType"><option value="">Все</option></select></label>
+      <label>Статус <select id="fStatus"><option value="">Все</option><option value="new">Новое</option><option value="confirmed">Подтверждено</option><option value="rejected">Отклонено</option></select></label>
+    </div>
+    <div class="actions"><button id="reload">Показать</button><button id="csv" class="secondary">Экспорт CSV</button></div>
+    <div class="tablewrap">
+      <table><thead><tr><th>Дата и время</th><th>Тип</th><th>Таймкод</th><th>Норма</th><th>Кассир</th><th>Статус</th></tr></thead><tbody id="rows"></tbody></table>
+    </div>
+  </div>
 </section>
 </main>
 <script src="app.js"></script>

@@ -7,26 +7,46 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck: {test: ["CMD-SHELL", "pg_isready -U forte"], interval: 5s, retries: 10}
+    restart: unless-stopped
   redis:
-    image: redis:7-alpine
+    image: redis:7.2-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
   api:
-    build: {context: ./backend, additional_contexts: {frontend: ./frontend}}
+    image: forteguard-backend:latest
+    build:
+      context: ./backend
+      additional_contexts: {frontend: ./frontend}
+      args: {PIP_INDEX_URL: "${PIP_INDEX_URL:-https://pypi.org/simple}"}
     env_file: .env
     environment: &env
-      DATABASE_URL: postgresql+psycopg2://forte:${POSTGRES_PASSWORD}@db:5432/forte
+      DATABASE_URL: postgresql+pg8000://forte:${POSTGRES_PASSWORD}@db:5432/forte
       REDIS_URL: redis://redis:6379/0
       QUEUE_MODE: rq
       STORAGE_DIR: /srv/data/storage
     volumes: [storage:/srv/data]
     depends_on: {db: {condition: service_healthy}, redis: {condition: service_started}}
     ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=3)"]
+      interval: 10s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
   worker:
-    build: {context: ./backend, additional_contexts: {frontend: ./frontend}}
+    image: forteguard-backend:latest  # same image as api, built once
     env_file: .env
-    environment: *env
+    environment:
+      <<: *env
+      OMP_NUM_THREADS: ${WORKER_THREADS:-4}
     command: ["rq", "worker", "analyze", "--url", "redis://redis:6379/0"]
     volumes: [storage:/srv/data]
-    depends_on: {db: {condition: service_healthy}, redis: {condition: service_started}}
+    depends_on: {db: {condition: service_healthy}, redis: {condition: service_started}, api: {condition: service_healthy}}
+    # one video at a time; limits keep a laptop responsive while the detector runs
+    deploy:
+      resources:
+        limits: {cpus: "${WORKER_CPUS:-4}", memory: 3g}
+    restart: unless-stopped
 volumes:
   pgdata:
   storage:
