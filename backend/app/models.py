@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -40,10 +40,13 @@ class Shift(Base):
 class LegalRule(Base):
     __tablename__ = "legal_rules"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True)
     document_title: Mapped[str] = mapped_column(Text)
     clause: Mapped[str] = mapped_column(String(100), default="")
     url: Mapped[str] = mapped_column(Text, default="")
     verified_by: Mapped[str] = mapped_column(String(100), default="")
+    verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    quote: Mapped[str] = mapped_column(Text, default="")
 
 
 class ViolationType(Base):
@@ -51,6 +54,7 @@ class ViolationType(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code: Mapped[str] = mapped_column(String(50), unique=True)
     name_ru: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text, default="")
     legal_rule_id: Mapped[int | None] = mapped_column(ForeignKey("legal_rules.id"), nullable=True)
     legal_rule: Mapped[LegalRule | None] = relationship()
 
@@ -59,6 +63,7 @@ class Job(Base):
     __tablename__ = "jobs"
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: uuid.uuid4().hex)
     status: Mapped[str] = mapped_column(String(20), default="processing")
+    progress: Mapped[float] = mapped_column(Float, default=0.0)
     verdict: Mapped[str | None] = mapped_column(String(20), nullable=True)
     file_path: Mapped[str] = mapped_column(Text)
     file_sha256: Mapped[str] = mapped_column(String(64))
@@ -82,6 +87,7 @@ class Violation(Base):
     employee_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True)
     confidence: Mapped[float] = mapped_column(Float, default=0.0)
     description: Mapped[str] = mapped_column(Text)
+    legal_text: Mapped[str] = mapped_column(Text, default="")
     review_status: Mapped[str] = mapped_column(String(20), default="new")  # new | confirmed | rejected
     review_comment: Mapped[str] = mapped_column(Text, default="")
     job: Mapped[Job] = relationship(back_populates="violations")
