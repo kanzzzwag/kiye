@@ -184,8 +184,10 @@ def main():
             with open(a.out or "docs/eval-latest.md", "w", encoding="utf-8") as f:
                 f.write(md)
         return
+    subset = ", ".join(sorted(videos, key=lambda s: int(s.split("-")[1])))
     parts = ["# Устойчивость к ракурсу (аугментации)", "",
-             "Каждое видео прогоняется заново с искажением кадра (детектор видит изменённую картинку).", "",
+             "Каждое видео прогоняется заново с искажением кадра (детектор видит изменённую картинку).",
+             f"Видео ({len(videos)}): {subset}.", "",
              "| Аугментация | Recall | Precision | TP/FP/FN/TN | Тип верный | Таймкод в допуске |", "|---|---|---|---|---|---|"]
     for aug in [x for x in a.augs.split(",") if x]:
         rows = evaluate(videos, labels, exp, os.path.join(a.cache + "_aug", aug), force=a.full,
@@ -195,11 +197,15 @@ def main():
                 f"{s['type_acc']} | {s['tc_ok']} |")
         print(line, flush=True)
         parts.append(line)
+    rows = evaluate(videos, labels, exp, a.cache)  # the same subset without distortion, for reference
+    s = summarize(rows)
+    parts.insert(parts.index("|---|---|---|---|---|---|") + 1,
+                 f"| без искажений | {s['recall']:.0%} | {s['precision']:.0%} | {s['TP']}/{s['FP']}/{s['FN']}/{s['TN']} | "
+                 f"{s['type_acc']} | {s['tc_ok']} |")
     md = "\n".join(parts) + "\n"
     print(md)
-    if not only:
-        with open(a.out or "docs/eval-augment.md", "w", encoding="utf-8") as f:
-            f.write(md)
+    with open(a.out or "docs/eval-augment.md", "w", encoding="utf-8") as f:  # augmented runs are usually subsets
+        f.write(md)
 
 
 if __name__ == "__main__":

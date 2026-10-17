@@ -164,3 +164,14 @@ def test_merge_keeps_strongest_nearby():
     b = rules.Event("UNAUTHORIZED_PERSON", 11.0, 0.6, "b")
     c = rules.Event("DOOR_OPEN", 30.0, 0.5, "c")
     assert codes(rules.merge([a, b, c], 4.0)) == ["UNAUTHORIZED_PERSON", "DOOR_OPEN"]
+
+
+def test_manual_zones_override(cfg):
+    from app.ml.scene import build_scene
+
+    tl = make_tl(10, lambda t: [person(CASHIER)] + [obj(o) for o in DESK_OBJ])
+    manual = {**cfg, "manual_zones": {"desk": [0.1, 0.4, 0.7, 0.6], "zone": None}}
+    sc = build_scene(tl, manual)
+    assert sc.desk == pytest.approx([0.1 * W, 0.4 * H, 0.7 * W, 0.6 * H])
+    auto = build_scene(tl, cfg)
+    assert auto.desk != sc.desk

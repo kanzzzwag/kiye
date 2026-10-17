@@ -142,6 +142,12 @@ def build_scene(tl: Timeline, cfg: dict) -> Scene:
             max(sc.desk[3], sc.anchor[3])]
     m = cfg.get("zone_margin", 0.35) * sc.cashier_h
     sc.zone = expand(zone, m, m, sc.W, sc.H)
+    # optional manual calibration (fractions of the frame) overrides the automatic estimate
+    manual = cfg.get("manual_zones") or {}
+    for key in ("desk", "zone"):
+        if manual.get(key):
+            x1, y1, x2, y2 = manual[key]
+            setattr(sc, key, [x1 * sc.W, y1 * sc.H, x2 * sc.W, y2 * sc.H])
 
     # 3) valid persons: overlap the work zone and are not tiny
     minh = cfg.get("min_person_rel_h", 0.4) * sc.cashier_h
