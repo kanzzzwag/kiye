@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ForteGuard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><h1>ForteGuard</h1><span class="sub">Контроль кассовой дисциплины по видео</span>
+<nav><button data-tab="upload" class="active">Анализ видео</button><button data-tab="journal">Журнал нарушений</button></nav></header>
+<main>
+<section id="upload">
+  <div class="card">
+    <label>API-ключ <input id="key" type="password" placeholder="X-API-Key"></label>
+    <div id="drop">Перетащите .mov сюда или <label class="link">выберите файл<input id="file" type="file" accept=".mov,.mp4" hidden></label></div>
+    <div class="row">
+      <label>Касса (номер) <input id="desk" type="number" min="1"></label>
+      <label>Начало записи <input id="recorded" type="datetime-local"></label>
+    </div>
+    <button id="go" disabled>Проверить</button>
+    <div id="status"></div>
+  </div>
+  <div id="result"></div>
+</section>
+<section id="journal" hidden>
+  <div class="card"><button id="reload">Обновить</button>
+  <table><thead><tr><th>Дата и время</th><th>Тип</th><th>Таймкод</th><th>Норма</th><th>Кассир</th><th>Статус</th></tr></thead><tbody id="rows"></tbody></table></div>
+</section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
