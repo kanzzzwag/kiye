@@ -1,0 +1,43 @@
+# Thresholds for backend/app/ml/rules.py. Times in seconds; sizes relative to the cashier's box height
+# (so they hold at other camera distances); change levels in grey levels (0..255) of lighting-normalised thumbnails.
+
+# --- scene / persons ---
+person_score: 0.5          # detector confidence for a person
+min_person_rel_h: 0.4      # smaller boxes are far away (behind glass) or partial
+zone_margin: 0.35          # work zone = cashier place + desk, expanded by this * cashier height
+zone_overlap: 0.25         # a person counts if this share of the box lies in the work zone
+behind_desk_margin: 0.5    # feet higher than (desk far edge - this * cashier height) = outside the room
+bg_min_share: 0.4          # a still person seen for this share of the clip away from desk = background
+bg_max_motion: 0.08
+track_gap: 1.5
+
+# --- output ---
+evidence_offsets: [0.0, 1.0, 2.0]   # evidence frames at t, t+1, t+2 (clamped to the clip)
+merge_window: 4.0                   # events closer than this: keep the strongest
+
+rules:
+  crowd:                 # a third person in the cash room
+    min_persons: 3
+    min_duration: 1.5
+  door:                  # the spot where someone walked in still looks different 2..8 s later
+    min_start: 0.75
+    min_diff: 15.0
+  open_area:             # large lasting change next to the desk (door or safe left open)
+    pixel_diff: 30
+    min_area: 0.12
+  cash_on_entry:         # small objects (banknote stacks) on the desk when a new person walks up
+    min_start: 0.75
+    before: 3.0
+    after: 2.0
+    min_share: 0.2
+  short_visit:           # visitor leaves within seconds while the cashier stays
+    min_start: 0.75
+    end_margin: 1.0
+    min_stay: 3.0
+    cit_max_stay: 12.0   # <= this: bag dropped and gone (CIT); longer: client left before the count ended
+    max_stay: 20.0
+  departure:             # cashier walks out and the workplace stays empty
+    min_empty: 1.0
+    min_away: 5.0
+    lead: 6.0            # cashier gets up this long before the room is seen empty
+    screen_white: 0.15
