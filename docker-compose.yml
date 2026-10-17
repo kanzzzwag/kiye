@@ -11,6 +11,7 @@ services:
   redis:
     image: redis:7.2-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    tmpfs: [/data]  # queue and rate-limit counters are ephemeral
     restart: unless-stopped
   api:
     image: forteguard-backend:latest

@@ -52,10 +52,12 @@ def box_stats(hsv: np.ndarray, box) -> tuple[float, float, float, float]:
 
 
 def pick_fps(duration: float, budget_frames: int = 360, lo: float = 2.0, hi: float = 4.0) -> float:
-    """2-4 fps: short clips get 4 fps, long ones fewer so a 145 s clip stays well under 2 minutes on CPU."""
+    """2-4 fps: short clips get 4 fps, long ones fewer so a 145 s clip stays well under 2 minutes on CPU.
+    Clips over 3 minutes may go below 2 fps so that even a 10-minute upload finishes inside the 5-minute limit."""
     if duration <= 0:
         return hi
-    return float(min(hi, max(lo, budget_frames / duration)))
+    floor = lo if duration <= 180 else 0.5
+    return float(min(hi, max(floor, budget_frames / duration)))
 
 
 def build(path: str, sample_fps: float | None = None, batch: int = 1, det_size: int = 640, threshold: float = 0.3,

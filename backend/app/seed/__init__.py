@@ -46,27 +46,37 @@ def sync_norms(db):
         db.add(row)
 
 
+def _wall(dt: datetime) -> datetime:
+    """Almaty wall-clock time without tzinfo (SQLite returns naive values, PostgreSQL aware ones)."""
+    return dt if dt.tzinfo is None else dt.astimezone(ALMATY).replace(tzinfo=None)
+
+
 def seed_demo(db, days_back=60, days_forward=60):
-    if db.scalars(select(Desk)).first():
-        return False
-    desks = [Desk(branch=b, name=n) for b, n in DEMO_DESKS]
-    emps = [Employee(full_name=n, personnel_no=p) for n, p in DEMO_EMPLOYEES]
-    db.add_all(desks + emps)
-    db.flush()
+    """Demo desks and employees once; shifts for +-60 days are topped up on every start (idempotent).
+    Two 12-hour shifts a day (08-20 and 20-08 Almaty time) so a demo upload at any hour finds a teller."""
+    added = False
+    desks = db.scalars(select(Desk).order_by(Desk.id)).all()
+    if not desks:
+        desks = [Desk(branch=b, name=n) for b, n in DEMO_DESKS]
+        db.add_all(desks + [Employee(full_name=n, personnel_no=p) for n, p in DEMO_EMPLOYEES])
+        db.flush()
+        added = True
+    emps = db.scalars(select(Employee).where(Employee.personnel_no.like("D-%")).order_by(Employee.id)).all()
+    if not emps:
+        return added
+    existing = {(s.desk_id, _wall(s.starts_at)) for s in db.scalars(select(Shift))}
     today = datetime.now(ALMATY).date()
     for k in range(-days_back, days_forward + 1):
         day = today + timedelta(days=k)
         for di, desk in enumerate(desks):
-            # two shifts a day per desk; who works rotates by day
-            morning = emps[(di * 2 + k) % len(emps)]
-            evening = emps[(di * 2 + k + 1) % len(emps)]
-            db.add(Shift(employee_id=morning.id, desk_id=desk.id,
-                         starts_at=datetime.combine(day, time(8, 0), ALMATY),
-                         ends_at=datetime.combine(day, time(14, 0), ALMATY)))
-            db.add(Shift(employee_id=evening.id, desk_id=desk.id,
-                         starts_at=datetime.combine(day, time(14, 0), ALMATY),
-                         ends_at=datetime.combine(day, time(20, 0), ALMATY)))
-    return True
+            for j, (start, hours) in enumerate(((time(8, 0), 12), (time(20, 0), 12))):
+                starts = datetime.combine(day, start, ALMATY)
+                if (desk.id, _wall(starts)) in existing:
+                    continue
+                emp = emps[(di * 2 + k + j) % len(emps)]  # who works rotates by day
+                db.add(Shift(employee_id=emp.id, desk_id=desk.id, starts_at=starts, ends_at=starts + timedelta(hours=hours)))
+                added = True
+    return added
 
 
 def run(demo: bool = True):
