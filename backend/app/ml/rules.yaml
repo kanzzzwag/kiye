@@ -40,7 +40,7 @@ rules:
     min_empty: 1.0
     min_away: 5.0
     lead: 6.0            # cashier gets up this long before the room is seen empty
-    screen_white: 0.15
+    screen_ratio: 1.45     # laptop screen 90th-percentile brightness / room median: lit unlocked screen
 
 # Optional manual calibration for a fixed camera, as fractions of the frame [x1, y1, x2, y2].
 # Leave null to find the desk and the work zone automatically (needed for a new, unknown camera angle).

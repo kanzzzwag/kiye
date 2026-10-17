@@ -5,12 +5,13 @@ Each rule returns Events; descriptions state only what is visible and end with t
 import os
 from dataclasses import dataclass, field
 
+import cv2
 import numpy as np
 import yaml
 
 from . import legal
 from .change import ChangeMap
-from .features import LABEL, SCORE, WHITE
+from .features import LABEL, SCORE, X1, Y2
 from .scene import Scene, build_scene, episodes, expand
 from .tracker import Track
 
@@ -212,6 +213,20 @@ def rule_short_visit(x: Ctx) -> list[Event]:
     return out
 
 
+def screen_ratio(x: Ctx, idx: list[int]) -> float:
+    """Brightness of the laptop screen relative to the room while nobody is there: a lit, unlocked screen
+    with a document stands out; a lock screen, a dark or a closed laptop does not."""
+    sc = x.sc
+    laps = [d[X1:Y2 + 1] for ds in sc.tl.dets for d in ds if d[LABEL] == "laptop" and d[SCORE] >= 0.4]
+    if not laps or not idx:
+        return 0.0
+    b = np.median(np.array(laps), axis=0)
+    img = np.median(sc.tl.small[idx], axis=0).astype(np.uint8)
+    v = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)[..., 2]
+    x1, y1, x2, y2 = sc.thumb_box([b[0], b[1], b[2], b[1] + 0.6 * (b[3] - b[1])])
+    return float(np.percentile(v[y1:y2, x1:x2], 90)) / max(float(np.median(v)), 1.0)
+
+
 def rule_departure(x: Ctx) -> list[Event]:
     """The cashier walks out of the cash room before the clip ends and nobody stays at the workplace."""
     c = x.cfg.get("departure", {})
@@ -224,9 +239,7 @@ def rule_departure(x: Ctx) -> list[Event]:
             continue
         # the cashier stands up and walks to the door a few seconds before the room is seen empty
         t_leave = max(0.0, t0 - c.get("lead", 6.0))
-        idx = list(range(a, b + 1))
-        white = [d[WHITE] for i in idx for d in sc.tl.dets[i] if d[LABEL] == "laptop" and d[SCORE] >= 0.3]
-        lit = bool(white) and float(np.median(white)) >= c.get("screen_white", 0.15)
+        lit = screen_ratio(x, list(range(a, b + 1))) >= c.get("screen_ratio", 1.45)
         tail = "до конца записи" if till_end else f"на {t1 - t0:.0f} с"
         if lit:
             out.append(Event("WORKPLACE_LEFT", t_leave, 0.4,
