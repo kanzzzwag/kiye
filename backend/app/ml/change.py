@@ -28,6 +28,7 @@ class ChangeMap:
             self.base = np.nanmedian(np.where(take, self.norm, np.float32(np.nan)), axis=0)
         self.base_known = cnt > 0
         self.win = max(1, int(round(window / sc.dt)))
+        self._diff = {}  # frame index -> (diff, known); rules ask for the same frames repeatedly
 
     def current(self, i: int) -> tuple[np.ndarray, np.ndarray]:
         """Median of unoccluded values over the last `window` seconds and whether it is known."""
@@ -40,9 +41,12 @@ class ChangeMap:
         return cur, known
 
     def diff(self, i: int) -> tuple[np.ndarray, np.ndarray]:
+        if i in self._diff:
+            return self._diff[i]
         cur, known = self.current(i)
         d = np.abs(np.nan_to_num(cur) - np.nan_to_num(self.base))
         d[~known] = 0
+        self._diff[i] = (d, known)
         return d, known
 
     def region_diff(self, i: int, box) -> tuple[float, float]:

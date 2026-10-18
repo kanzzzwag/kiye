@@ -159,11 +159,12 @@ def test_norm_text_never_invents_a_clause():
         assert ("требует проверки" in text) == (not rule.get("verified"))
 
 
-def test_merge_keeps_strongest_nearby():
+def test_merge_keeps_all_types_and_drops_duplicates():
     a = rules.Event("DOOR_OPEN", 10.0, 0.5, "a")
     b = rules.Event("UNAUTHORIZED_PERSON", 11.0, 0.6, "b")
     c = rules.Event("DOOR_OPEN", 30.0, 0.5, "c")
-    assert codes(rules.merge([a, b, c], 4.0)) == ["UNAUTHORIZED_PERSON", "DOOR_OPEN"]
+    d = rules.Event("DOOR_OPEN", 11.5, 0.4, "d")
+    assert codes(rules.merge([a, b, c, d], 4.0)) == ["UNAUTHORIZED_PERSON", "DOOR_OPEN", "DOOR_OPEN"]
 
 
 def test_manual_zones_override(cfg):

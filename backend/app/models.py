@@ -73,7 +73,8 @@ class Job(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    violations: Mapped[list["Violation"]] = relationship(back_populates="job", order_by="Violation.timecode_sec")
+    # stored in rule-priority order (specific violations first), see ml/rules.merge
+    violations: Mapped[list["Violation"]] = relationship(back_populates="job", order_by="Violation.id")
 
 
 class Violation(Base):

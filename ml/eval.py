@@ -9,6 +9,7 @@ Expected types come from the table in docs/violation-types.md (the reviewed grou
 Writes docs/eval-latest.md (or docs/eval-augment.md).
 """
 import argparse
+import json
 import os
 import re
 import sys
@@ -22,7 +23,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "backend"))
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
-from app.ml import features, pipeline  # noqa: E402
+from app.ml import features, pipeline, rules  # noqa: E402
 from labels import find_videos, load_labels  # noqa: E402
 
 TOL = 3.0  # seconds: timecode counts as correct within this error
@@ -44,7 +45,7 @@ def _rotate(deg):
     def f(img):
         h, w = img.shape[:2]
         m = cv2.getRotationMatrix2D((w / 2, h / 2), deg, 1.0)
-        return cv2.warpAffine(img, m, (w, h), borderMode=cv2.BORDER_REFLECT)
+        return cv2.warpAffine(img, m, (w, h), borderMode=cv2.BORDER_CONSTANT)
     return f
 
 
@@ -53,7 +54,7 @@ def _perspective(k):
         h, w = img.shape[:2]
         src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
         dst = np.float32([[w * k, h * k * .5], [w * (1 - k * .3), 0], [w, h], [0, h * (1 - k * .4)]])
-        return cv2.warpPerspective(img, cv2.getPerspectiveTransform(src, dst), (w, h), borderMode=cv2.BORDER_REFLECT)
+        return cv2.warpPerspective(img, cv2.getPerspectiveTransform(src, dst), (w, h), borderMode=cv2.BORDER_CONSTANT)
     return f
 
 
@@ -65,7 +66,7 @@ def _scale(s):
             y, x = (r.shape[0] - h) // 2, (r.shape[1] - w) // 2
             return r[y:y + h, x:x + w]
         out = cv2.copyMakeBorder(r, (h - r.shape[0]) // 2, h - r.shape[0] - (h - r.shape[0]) // 2,
-                                 (w - r.shape[1]) // 2, w - r.shape[1] - (w - r.shape[1]) // 2, cv2.BORDER_REFLECT)
+                                 (w - r.shape[1]) // 2, w - r.shape[1] - (w - r.shape[1]) // 2, cv2.BORDER_CONSTANT)
         return out
     return f
 
@@ -93,15 +94,48 @@ def timeline_for(name, path, cache_dir, force=False, transform=None):
     return tl
 
 
-def evaluate(videos, labels, exp, cache_dir, force=False, transform=None, verbose=False):
+def load_extras(name, kf_dir="data/cache_kf", pose_dir="data/cache_pose") -> dict:
+    """Cached second-pass results (key-frame open-vocabulary detections, cashier poses), if present."""
+    out = {}
+    p = os.path.join(kf_dir, f"{name}.json")
+    if os.path.exists(p):
+        with open(p, encoding="utf-8") as f:
+            out["kf"] = json.load(f)
+    p = os.path.join(pose_dir, f"{name}.npz")
+    if os.path.exists(p):
+        z = np.load(p)
+        out["pose"] = {"t": z["t"], "kp": z["kp"], "box": z["box"]}
+    return out
+
+
+def extras_for(name, path, tl, kf_dir, force=False, transform=None) -> dict:
+    """Key-frame pass for a timeline: from cache, or computed and cached (augmented copies)."""
+    ex = load_extras(name, kf_dir)
+    if "kf" in ex and not force:
+        return ex
+    if not rules.load_config().get("keyframes", {}).get("enabled", True):
+        return ex
+    t0 = time.time()
+    ex.update(pipeline.compute_extras(path, tl, rules.load_config(), transform=transform))
+    if "kf" in ex:
+        ex["kf"]["sec"] = round(time.time() - t0, 1)
+        os.makedirs(kf_dir, exist_ok=True)
+        with open(os.path.join(kf_dir, f"{name}.json"), "w", encoding="utf-8") as f:
+            json.dump(ex["kf"], f)
+    return ex
+
+
+def evaluate(videos, labels, exp, cache_dir, force=False, transform=None, verbose=False, kf_dir="data/cache_kf",
+             use_kf=True):
     rows = []
     for name, path in videos.items():
         if name not in labels:
             continue
         tl = timeline_for(name, path, cache_dir, force, transform)
+        extras = extras_for(name, path, tl, kf_dir, force, transform) if use_kf else {}
         t0 = time.time()
-        events = pipeline.analyze_timeline(tl)
-        rules_sec = time.time() - t0
+        events = pipeline.analyze_timeline(tl, None, extras)
+        rules_sec = time.time() - t0 + float(extras.get("kf", {}).get("sec", 0.0))
         gt = labels[name]
         pred = bool(events)
         verdict = {(True, True): "TP", (False, True): "FP", (True, False): "FN", (False, False): "TN"}[(gt["violation"], pred)]
@@ -171,6 +205,7 @@ def main():
     ap.add_argument("--augs", default=",".join(AUGS))
     ap.add_argument("--out", default="")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--no-kf", action="store_true", help="skip the key-frame pass (diagnostics only)")
     a = ap.parse_args()
     labels = load_labels(os.path.join(a.data, "open_labels.xlsx"))
     videos = find_videos(os.path.join(a.data, "videos"))
@@ -194,7 +229,8 @@ def main():
              "| Аугментация | Recall | Precision | TP/FP/FN/TN | Тип верный | Таймкод в допуске |", "|---|---|---|---|---|---|"]
     for aug in [x for x in a.augs.split(",") if x]:
         rows = evaluate(videos, labels, exp, os.path.join(a.cache + "_aug", aug), force=a.full,
-                        transform=AUGS[aug], verbose=a.verbose)
+                        transform=AUGS[aug], verbose=a.verbose, kf_dir=os.path.join(a.cache + "_aug", aug + "_kf"),
+                        use_kf=not a.no_kf)
         s = summarize(rows)
         line = (f"| {aug} | {s['recall']:.0%} | {s['precision']:.0%} | {s['TP']}/{s['FP']}/{s['FN']}/{s['TN']} | "
                 f"{s['type_acc']} | {s['tc_ok']} |")

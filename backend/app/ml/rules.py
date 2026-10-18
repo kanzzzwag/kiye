@@ -54,8 +54,9 @@ def fmt_t(t: float) -> str:
 class Ctx:
     """Shared, lazily computed signals for all rules."""
 
-    def __init__(self, sc: Scene, cfg: dict):
+    def __init__(self, sc: Scene, cfg: dict, extras: dict | None = None):
         self.sc, self.cfg = sc, cfg
+        self.extras = extras or {}
         self.times = sc.tl.times
         self.count = np.array([sc.count(i) for i in range(len(self.times))])
         self._cm = None
@@ -145,21 +146,33 @@ def rule_open_area(x: Ctx) -> list[Event]:
     c = x.cfg.get("open_area", {})
     sc = x.sc
     step = max(1, int(0.5 / sc.dt))
-    hits = []
+    hold = max(2, int(round(c.get("hold", 3.0) / (step * sc.dt))))
+    zx1, zy1, zx2, zy2 = sc.thumb_box(sc.zone)
+    dx1, dy1, dx2, dy2 = sc.thumb_box(sc.desk)
+    # sizes relative to the cashier's box, not pixels: the same threshold holds at another distance or angle
+    unit = max(1.0, sc.cashier_h * sc.sx) * max(1.0, (sc.anchor[2] - sc.anchor[0]) * sc.sx)
+    masks, times = [], []
     for i in range(0, len(x.times), step):
+        times.append(float(x.times[i]))
         if not x.normal_light(i):
+            masks.append(None)
             continue
-        x1, y1, x2, y2 = sc.thumb_box(sc.desk)
         d, k = x.cm.diff(i)
-        kk = k[y1:y2, x1:x2]
-        if kk.mean() < 0.3:
+        m = (d > c.get("pixel_diff", 30)) & k
+        m[:zy1], m[zy2:], m[:, :zx1], m[:, zx2:] = False, False, False, False
+        m[dy1:dy2, dx1:dx2] = False  # objects moved on the desk are normal work
+        masks.append(m)
+    hits = []
+    for j in range(hold - 1, len(masks)):
+        win = masks[j - hold + 1:j + 1]
+        if any(w is None for w in win):
             continue
-        area = float(((d[y1:y2, x1:x2] > c.get("pixel_diff", 30)) & kk).sum() / kk.size)
-        hits.append((float(x.times[i]), area))
-    if not hits or max(a for _, a in hits) < c.get("min_area", 0.12):
+        n, _, st, _ = cv2.connectedComponentsWithStats(np.logical_and.reduce(win).astype(np.uint8))
+        area = float(st[1:, 4].max()) / unit if n > 1 else 0.0
+        hits.append((times[j - hold + 1], area))
+    if not hits or max(a for _, a in hits) < c.get("min_area", 0.1):
         return []
-    thr = c.get("min_area", 0.12) * 0.6
-    t0 = next(t for t, a in hits if a >= thr)
+    t0 = next(t for t, a in hits if a >= c.get("min_area", 0.1) * 0.6)
     return [Event("DOOR_OPEN", t0, 0.5,
                   f"С {fmt_t(t0)} рядом с рабочим местом кассира остаётся открытой дверь или дверца "
                   f"(значительная часть зоны кассы выглядит иначе, чем в начале записи, и не возвращается в исходное "
@@ -252,24 +265,52 @@ def rule_departure(x: Ctx) -> list[Event]:
     return out
 
 
-RULES = [rule_crowd, rule_entry_door, rule_open_area, rule_cash_on_entry, rule_short_visit, rule_departure]
+def rule_keyframe_drink(x: Ctx) -> list[Event]:
+    """A cup or bottle on the work-zone crop (open-vocabulary detector on a key frame) while the cashier is at work."""
+    c = x.cfg.get("keyframe", {})
+    kf = x.extras.get("kf")
+    if not kf:
+        return []
+    for t, dets in zip(kf["times"], kf["dets"]):
+        drinks = [d for d in dets if d[0] == "drink" and d[1] >= c.get("drink_score", 0.5)]
+        if drinks and x.count[x.sc.t_index(t)] >= 1:
+            return [Event("FOOD_DRINK", max(0.0, t - c.get("lead", 1.0)), 0.5,
+                          f"В {fmt_t(t)} на рабочем месте кассира, где находятся наличные, виден стакан или бутылка "
+                          f"с напитком; кассир в это время на месте.")]
+    return []
+
+
+RULES = [rule_crowd, rule_entry_door, rule_open_area, rule_cash_on_entry, rule_short_visit, rule_departure,
+         rule_keyframe_drink]
 
 
 def merge(events: list[Event], window: float) -> list[Event]:
+    """Duplicates of one type close in time are merged; different types are all kept (each is its own violation).
+    Order: specific, stronger rules first (the generic "cashier left" has the lowest score), then by time."""
     events = sorted(events, key=lambda e: (-e.score, e.t))
     out = []
     for e in events:
-        if any(abs(o.t - e.t) < window and (o.code == e.code or o.score > e.score) for o in out):
+        if any(o.code == e.code and abs(o.t - e.t) < window for o in out):
             continue
         out.append(e)
-    return sorted(out, key=lambda e: e.t)
+    return out
 
 
-def run(tl, cfg: dict) -> list[Event]:
+_last_scene: dict = {}  # one entry: the scene and change map of the last timeline (threshold sweeps reuse them)
+
+
+def run(tl, cfg: dict, extras: dict | None = None) -> list[Event]:
     if len(tl.times) == 0:
         return []
-    sc = build_scene(tl, cfg)
-    x = Ctx(sc, cfg.get("rules", {}))
+    key = (id(tl), repr(sorted((k, repr(v)) for k, v in cfg.items() if k != "rules")))
+    if _last_scene.get("key") == key and _last_scene.get("tl") is tl:
+        sc, cm = _last_scene["sc"], _last_scene["ctx"]._cm
+    else:
+        sc, cm = build_scene(tl, cfg), None
+    x = Ctx(sc, cfg.get("rules", {}), extras or {})
+    x._cm = cm
+    _last_scene.clear()
+    _last_scene.update(key=key, tl=tl, sc=sc, ctx=x)
     events = []
     for rule in RULES:
         events += rule(x)

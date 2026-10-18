@@ -8,7 +8,15 @@
 
 | Модель | Назначение | Лицензия кода | Лицензия весов | Источник |
 |---|---|---|---|---|
-| RT-DETR R18-vd (`PekingU/rtdetr_r18vd_coco_o365`) | детекция людей и предметов (COCO 80 классов) | Apache-2.0 (реализация в `transformers`) | Apache-2.0 (карточка модели, поле `license: apache-2.0`) | https://huggingface.co/PekingU/rtdetr_r18vd_coco_o365 |
+| RT-DETR R18-vd (`PekingU/rtdetr_r18vd_coco_o365`, ревизия `386c4385`) | детекция людей и предметов (COCO 80 классов) | Apache-2.0 (реализация в `transformers`) | Apache-2.0 (карточка модели, поле `license: apache-2.0`) | https://huggingface.co/PekingU/rtdetr_r18vd_coco_o365 |
+| Grounding DINO tiny (`IDEA-Research/grounding-dino-tiny`, ревизия `a2bb814d`) | open-vocabulary детекция на ключевых кадрах: стакан, пачки купюр, сумка, одежда, открытая дверца | Apache-2.0 (реализация в `transformers`) | Apache-2.0 (карточка модели, поле `license: apache-2.0`) | https://huggingface.co/IDEA-Research/grounding-dino-tiny |
+
+Проверены и не используются (не по лицензии, а по результату или времени; все Apache-2.0):
+OWLv2 `google/owlv2-base-patch16-ensemble` и OWL-ViT B/16 — 5–10 с на кадр на CPU;
+OWL-ViT B/32 — быстрее (0,9 с), но не находит стакан и пачки;
+ViTPose `usyd-community/vitpose-base-simple` — поза не отличает нарушение от нормы на этих ракурсах;
+DINOv2-small `facebook/dinov2-small` — обучаемый скорер кадров на его признаках оказался на уровне случайного.
+`openai/clip-vit-base-patch32` не рассматривался: в метаданных Hugging Face нет поля лицензии.
 
 Обучающие данные весов: COCO 2017 (аннотации CC BY 4.0), предобучение Objects365. На лицензию весов это не влияет,
 но в отчёте для заказчика стоит указать происхождение данных.

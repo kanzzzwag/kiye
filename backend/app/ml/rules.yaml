@@ -22,11 +22,12 @@ rules:
   door:                  # the spot where someone walked in still looks different 2..8 s later
     min_start: 0.75
     min_diff: 15.0
-  open_area:             # large lasting change next to the desk (door or safe left open)
+  open_area:             # large lasting change beside the desk (door or safe left open)
     pixel_diff: 30
-    min_area: 0.12
+    min_area: 0.1        # largest blob unchanged for `hold` s, in units of the cashier box area
+    hold: 3.0
   cash_on_entry:         # small objects (banknote stacks) on the desk when a new person walks up
-    min_start: 0.75
+    min_start: 3.0       # the desk must be seen for `before` s before the entry
     before: 3.0
     after: 2.0
     min_share: 0.2
@@ -36,6 +37,9 @@ rules:
     min_stay: 3.0
     cit_max_stay: 12.0   # <= this: bag dropped and gone (CIT); longer: client left before the count ended
     max_stay: 20.0
+  keyframe:              # open-vocabulary detections on key frames (see keyframes:)
+    drink_score: 0.5     # cup or bottle in the work zone
+    lead: 1.0
   departure:             # cashier walks out and the workplace stays empty
     min_empty: 1.0
     min_away: 5.0
@@ -47,3 +51,10 @@ rules:
 manual_zones:
   desk: null
   zone: null
+
+# Second pass: Grounding DINO tiny on full-resolution crops of the work zone at key frames.
+keyframes:
+  enabled: true
+  every: 5.0             # seconds between key frames
+  max: 14                # cap per clip (145 s clip: 14 + last frame, ~3 s each on 4 cores; 180 s budget)
+  short_side: 480        # input size of the crop
