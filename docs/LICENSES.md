@@ -45,6 +45,7 @@ DINOv2-small `facebook/dinov2-small` — обучаемый скорер кад�
 | pg8000 (драйвер PostgreSQL) | 1.31.2 | BSD-3-Clause |
 | redis (клиент) | 5.2.1 | MIT |
 | rq | 2.1.0 | BSD-2-Clause |
+| swagger-ui-dist (страница /docs, скачивается при сборке) | 5.17.14 | Apache-2.0 |
 
 ## Системные компоненты
 

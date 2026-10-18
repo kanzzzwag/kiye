@@ -142,3 +142,11 @@ def test_job_details_for_ui(client, video):
     v = d["violations"][0]
     assert v["seen"] == "Тест." and v["why"] and v["law"]["act"] and v["frames"]
     assert "elapsed_sec" in d
+
+
+def test_docs_page_has_no_cdn(client):
+    r = client.get("/docs")
+    assert r.status_code == 200
+    assert "cdn." not in r.text and "unpkg" not in r.text
+    assert "script-src 'self'" in r.headers["Content-Security-Policy"]
+    assert client.get("/openapi.json").status_code == 200

@@ -13,7 +13,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,7 +29,7 @@ from .security import SECURITY_HEADERS, check_rate
 
 log = logging.getLogger("forteguard")
 
-app = FastAPI(title="ForteGuard API", version="1.0")
+app = FastAPI(title="ForteGuard API", version="1.0", docs_url=None, redoc_url=None)  # /docs below: no CDN
 init_db()
 seed.run(demo=settings.seed_demo)
 os.makedirs(os.path.join(settings.storage_dir, "videos"), exist_ok=True)
@@ -44,6 +44,8 @@ async def security_headers(request: Request, call_next):
     response = await call_next(request)
     for k, v in SECURITY_HEADERS.items():
         response.headers.setdefault(k, v)
+    if request.url.path == "/docs":  # Swagger UI sets inline styles; scripts stay 'self' only
+        response.headers["Content-Security-Policy"] = DOCS_CSP
     if request.url.path.startswith("/api/"):
         response.headers.setdefault("Cache-Control", "no-store")
     return response
@@ -296,6 +298,37 @@ def frame(job_id: str, name: str):
     if not os.path.isfile(p):
         raise HTTPException(404, "Not found")
     return FileResponse(p, media_type="image/jpeg")
+
+
+# ---- API documentation (Swagger UI served locally, works offline) ----
+
+DOCS_CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+            "connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
+DOCS_FILES = {
+    "swagger-ui-bundle.js": os.path.join(os.environ.get("DOCS_STATIC_DIR", "/srv/docs-static"), "swagger-ui-bundle.js"),
+    "swagger-ui.css": os.path.join(os.environ.get("DOCS_STATIC_DIR", "/srv/docs-static"), "swagger-ui.css"),
+    "init.js": os.path.join(os.path.dirname(__file__), "docs_ui", "init.js"),
+}
+DOCS_HTML = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>ForteGuard API</title>
+<link rel="icon" href="/logo.svg"><link rel="stylesheet" href="/docs-static/swagger-ui.css"></head>
+<body><div id="swagger-ui"></div>
+<script src="/docs-static/swagger-ui-bundle.js"></script><script src="/docs-static/init.js"></script></body></html>"""
+
+
+@app.get("/docs", include_in_schema=False)
+def docs():
+    if not os.path.isfile(DOCS_FILES["swagger-ui-bundle.js"]):
+        return HTMLResponse("<p>Swagger UI не установлен в образ. Схема API: <a href='/openapi.json'>/openapi.json</a></p>")
+    return HTMLResponse(DOCS_HTML)
+
+
+@app.get("/docs-static/{name}", include_in_schema=False)
+def docs_static(name: str):
+    path = DOCS_FILES.get(name)
+    if not path or not os.path.isfile(path):
+        raise HTTPException(404, "Not found")
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
 
 _frontend = os.environ.get("FRONTEND_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "frontend"))
