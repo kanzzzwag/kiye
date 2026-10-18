@@ -2,31 +2,131 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ForteGuard</title>
+<title>Kiye — проверка кассовой дисциплины</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header><h1>ForteGuard</h1><span class="sub">Контроль кассовой дисциплины по видео</span>
-<nav><button data-tab="upload" class="active">Анализ видео</button><button data-tab="journal">Журнал нарушений</button></nav></header>
-<main>
-<section id="upload">
-  <div class="card">
-    <label>API-ключ <input id="key" type="password" placeholder="X-API-Key" autocomplete="off"></label>
-    <div id="drop"><span id="dropText">Перетащите .mov сюда или </span><label class="link">выберите файл<input id="file" type="file" accept=".mov,.mp4,video/quicktime,video/mp4" hidden></label></div>
-    <div class="row">
-      <label>Касса (номер) <input id="desk" type="number" min="1" inputmode="numeric"></label>
-      <label>Начало записи <input id="recorded" type="datetime-local"></label>
-    </div>
-    <button id="go" disabled>Проверить</button>
-    <div id="progress" hidden>
-      <div class="bar"><div id="barFill"></div></div>
-      <div id="status" class="muted"></div>
-    </div>
-    <div id="error" class="error" hidden></div>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="#" data-go="upload">
+      <img src="logo.svg" alt="" width="34" height="34">
+      <span><b>Kiye</b><small>AI-проверка кассовой дисциплины по видео</small></span>
+    </a>
+    <nav class="nav" id="nav">
+      <a href="#" data-go="types">Типы нарушений</a>
+      <a href="#" data-go="journal">Журнал</a>
+      <a href="/docs" target="_blank" rel="noopener">API</a>
+      <button type="button" class="linkbtn" id="keyBtn" title="Ключ API">Ключ</button>
+      <span class="badge-local"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2M3.5 7h9v7h-9z"/></svg>Работает локально</span>
+    </nav>
+    <button type="button" class="btn-outline" id="againBtn" hidden>+&nbsp;Проверить другое видео</button>
   </div>
-  <div id="result"></div>
+</header>
+<div class="ornament" aria-hidden="true"></div>
+
+<main class="wrap">
+
+<!-- 1. upload -->
+<section id="view-upload" class="view grid2">
+  <div>
+    <h1>Проверка видеозаписи кассы</h1>
+    <p class="lead">Загрузите запись с камеры над рабочим местом кассира. Сервис найдёт моменты, похожие на нарушение
+      порядка работы с наличными, и покажет кадр, время и норматив.</p>
+    <div class="drop" id="drop" tabindex="0">
+      <div class="drop-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V4m0 0L7.5 8.5M12 4l4.5 4.5M5 15v4h14v-4"/></svg></div>
+      <div class="drop-title">Перетащите видео сюда</div>
+      <div class="muted">или выберите файл на компьютере</div>
+      <label class="btn-outline pick">Выбрать файл .mov<input id="file" type="file" accept=".mov,.mp4,video/quicktime,video/mp4" hidden></label>
+      <div class="hint">.mov или .mp4 до 500 МБ · обработка до 5 минут · видео не отправляется во внешние сервисы</div>
+    </div>
+    <div class="filerow" id="filerow" hidden>
+      <div class="file-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"/></svg></div>
+      <div class="file-meta"><b id="fname"></b><span class="mono muted" id="fmeta"></span></div>
+      <button type="button" class="btn-primary" id="go">Начать проверку <span aria-hidden="true">→</span></button>
+    </div>
+    <details class="more" id="more">
+      <summary>Касса и время записи (для журнала и кассира по смене)</summary>
+      <div class="row2">
+        <label>Касса (номер) <input id="desk" type="number" min="1" inputmode="numeric"></label>
+        <label>Начало записи <input id="recorded" type="datetime-local"></label>
+      </div>
+    </details>
+    <div class="error" id="error" hidden></div>
+  </div>
+  <aside class="card side">
+    <h3>Что проверяет сервис</h3>
+    <div class="muted small" id="typesCount">типы нарушений, видимые на записи</div>
+    <ul class="checks" id="typesList"></ul>
+    <div class="muted small foot">Нормативы: постановления Правления НБРК № 231 от 29.11.2019 и № 14 от 24.02.2020</div>
+  </aside>
 </section>
-<section id="journal" hidden>
+
+<!-- 2. progress -->
+<section id="view-progress" class="view grid2" hidden>
+  <div>
+    <div class="step mono">ШАГ 2 ИЗ 3</div>
+    <h1>Анализируем запись</h1>
+    <p class="lead">Обычно это занимает 1–3 минуты. Страницу можно не закрывать — результат появится здесь.</p>
+    <div class="screen">
+      <div class="screen-tag mono"><i class="dot"></i>КАДР <span id="frameT">0:00 / 0:00</span></div>
+      <canvas id="frameCanvas" width="640" height="360" aria-label="Текущий анализируемый кадр"></canvas>
+      <div class="screen-bar"><div id="screenFill"></div></div>
+    </div>
+  </div>
+  <aside class="card side">
+    <div class="filehead">
+      <div class="file-ico dark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h12v10H3zM15 10l6-3v10l-6-3"/></svg></div>
+      <div><b id="pName"></b><div class="mono muted small" id="pJob"></div></div>
+    </div>
+    <div class="prog-head"><b>Общий прогресс</b><b id="pPct">0%</b></div>
+    <div class="bar"><div id="barFill"></div></div>
+    <div class="muted small" id="pTime">Прошло 0:00</div>
+    <ol class="stages" id="stages">
+      <li data-s="0"><i></i>Видео загружено<span class="mono muted" id="sUp"></span></li>
+      <li data-s="1"><i></i>Кадры извлечены<span class="mono muted" id="sFrames"></span></li>
+      <li data-s="2"><i></i>Анализ кадров моделью<span class="mono muted" id="sModel"></span></li>
+      <li data-s="3"><i></i>Проверка по правилам<span class="mono muted"></span></li>
+      <li data-s="4"><i></i>Подготовка отчёта<span class="mono muted"></span></li>
+    </ol>
+    <button type="button" class="btn-primary wide" id="openResult" disabled>Открыть результат <span class="arrow" aria-hidden="true">→</span></button>
+    <div class="muted small note"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1"/></svg>Страница откроет результат сама, когда анализ завершится</div>
+  </aside>
+</section>
+
+<!-- 3. result -->
+<section id="view-result" class="view" hidden>
+  <div class="banner" id="banner">
+    <div class="banner-ico" id="bannerIco"></div>
+    <div class="banner-txt"><b id="bTitle"></b><span id="bSub"></span></div>
+    <span class="chip mono" id="bChip"></span>
+  </div>
+  <div class="grid2 result">
+    <div>
+      <div class="player">
+        <span class="time-tag mono" id="tTag">0:00 / 0:00</span>
+        <video id="player" playsinline preload="metadata"></video>
+        <button type="button" class="play" id="playBtn" aria-label="Воспроизвести"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+      </div>
+      <div class="card tl-card">
+        <div class="tl-head"><b>Шкала времени</b><span class="mono muted" id="tlTime">0:00 / 0:00</span></div>
+        <div class="tl" id="timeline"></div>
+        <div class="tl-axis mono muted" id="tlAxis"></div>
+      </div>
+      <div class="code-card">
+        <div class="code-head"><b>Ответ API · GET <span id="apiPath"></span></b><button type="button" class="btn-ghost" id="copyJson">Скопировать JSON</button></div>
+        <pre class="mono" id="json"></pre>
+      </div>
+    </div>
+    <div id="cards"></div>
+  </div>
+  <p class="disclaimer">Результат — подсказка для проверки человеком, а не окончательное юридическое или дисциплинарное
+    заключение. Сервис не делает выводов о том, чего не видно на записи (проводки, сверки).</p>
+</section>
+
+<!-- journal -->
+<section id="view-journal" class="view" hidden>
+  <h1>Журнал нарушений</h1>
   <div class="card">
     <div class="filters">
       <label>С <input id="fFrom" type="date"></label>
@@ -34,13 +134,32 @@
       <label>Тип <select id="fType"><option value="">Все</option></select></label>
       <label>Статус <select id="fStatus"><option value="">Все</option><option value="new">Новое</option><option value="confirmed">Подтверждено</option><option value="rejected">Отклонено</option></select></label>
     </div>
-    <div class="actions"><button id="reload">Показать</button><button id="csv" class="secondary">Экспорт CSV</button></div>
+    <div class="actions"><button type="button" class="btn-primary" id="reload">Показать</button><button type="button" class="btn-outline" id="csv">Экспорт CSV</button></div>
     <div class="tablewrap">
       <table><thead><tr><th>Дата и время</th><th>Тип</th><th>Таймкод</th><th>Норма</th><th>Кассир</th><th>Статус</th></tr></thead><tbody id="rows"></tbody></table>
     </div>
   </div>
 </section>
+
+<!-- types -->
+<section id="view-types" class="view" hidden>
+  <h1>Типы нарушений</h1>
+  <p class="lead">Что сервис ищет на записи и на какой пункт нормативного акта ссылается. Пункты с пометкой
+    «требует проверки» ещё не подтверждены юристом.</p>
+  <div class="types-grid" id="typesGrid"></div>
+</section>
+
 </main>
+<footer class="wrap foot-note" id="footNote">Результат — подсказка для проверки человеком, а не окончательное юридическое или дисциплинарное заключение. Лица не распознаются.</footer>
+
+<dialog id="keyDialog">
+  <form method="dialog" class="dlg">
+    <h3>Ключ API</h3>
+    <p class="muted small">Ключ задаётся в файле .env на сервере (API_KEY). В браузере он хранится только на этом устройстве.</p>
+    <input id="key" type="password" placeholder="X-API-Key" autocomplete="off">
+    <div class="actions"><button class="btn-primary" value="save">Сохранить</button><button class="btn-outline" value="cancel">Отмена</button></div>
+  </form>
+</dialog>
 <script src="app.js"></script>
 </body>
 </html>

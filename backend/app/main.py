@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import jobqueue, seed
+from .ml import legal
 from .config import settings
 from .db import SessionLocal, init_db
 from .models import AuditLog, Job, Violation, ViolationType
@@ -177,11 +178,34 @@ def job_progress(job_id: str, db: Session = Depends(get_db)):
     job = db.get(Job, job_id) if job_id.isalnum() else None
     if not job:
         raise HTTPException(404, "Job not found")
-    return {"job_id": job.id, "status": job.status, "progress": round(job.progress or 0.0, 3),
-            "violations": [{"id": v.id, "code": v.violation_type.code if v.violation_type else "",
-                            "legal": v.legal_text,
-                            "frames": [f"/api/internal/frames/{job.id}/{os.path.basename(fr.path)}" for fr in v.frames]}
-                           for v in job.violations] if job.status == "done" else []}
+    out = {"job_id": job.id, "status": job.status, "progress": round(job.progress or 0.0, 3), "violations": []}
+    if job.finished_at and job.created_at:
+        out["elapsed_sec"] = round((job.finished_at - job.created_at).total_seconds(), 1)
+    if job.status != "done":
+        return out
+    types = legal.load()["types_by_code"]
+    for v in job.violations:
+        code = v.violation_type.code if v.violation_type else ""
+        rule = v.violation_type.legal_rule if v.violation_type else None
+        out["violations"].append({
+            "id": v.id, "code": code, "type": v.type_name, "timecode_sec": v.timecode_sec,
+            "seen": v.description.split(" Норма:")[0].strip(),
+            "why": types.get(code, {}).get("why", ""),
+            "legal": v.legal_text,
+            "law": {"act": rule.document_title, "clause": rule.clause, "quote": rule.quote, "url": rule.url,
+                    "verified": rule.verified} if rule else None,
+            "frames": [{"t": fr.timestamp_sec, "url": f"/api/internal/frames/{job.id}/{os.path.basename(fr.path)}"}
+                       for fr in v.frames],
+        })
+    return out
+
+
+@app.get("/api/public/types")
+def public_types():
+    """What the service looks for, with the norm reference (no key needed: no case data here)."""
+    d = legal.load()
+    return [{"code": t["code"], "name": t["name_ru"], "ref": legal.short_ref(t["rule_id"]),
+             "description": t.get("description", ""), "why": t.get("why", "")} for t in d["types"]]
 
 
 @app.get("/api/internal/types", dependencies=[Depends(require_key)])

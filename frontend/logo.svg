@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Kiye">
+  <g fill="none" stroke="#1d3268" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 8 V56"/>
+    <path d="M19 32 C26 26 32 18 38 12 C42 8 49 7 52 11 C55 15 52 20 47 19 C44 18.5 43.5 15 46 14"/>
+    <path d="M19 32 C27 38 33 46 38 52 C42 56 49 57 52 53 C55 49 52 44 47 45 C44 45.5 43.5 49 46 50"/>
+  </g>
+  <path d="M21 25 L28 32 L21 39 L14 32 Z" fill="#c8973f" stroke="#a87a2c" stroke-width="1"/>
+</svg>

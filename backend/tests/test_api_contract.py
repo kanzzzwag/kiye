@@ -123,3 +123,22 @@ def test_rate_limit():
     rl = RateLimiter(3)
     assert [rl.hit("k", "1.2.3.4") for _ in range(4)] == [True, True, True, False]
     assert rl.hit("k", "5.6.7.8")  # other IP has its own budget
+
+
+def test_public_types_without_key(client):
+    r = client.get("/api/public/types")
+    assert r.status_code == 200
+    types = r.json()
+    assert {"CASH_UNATTENDED", "FOOD_DRINK"} <= {t["code"] for t in types}
+    assert all(t["name"] and t["ref"] for t in types)
+    assert any(t["ref"].startswith("№231 п.") for t in types)
+
+
+def test_job_details_for_ui(client, video):
+    with open(video, "rb") as f:
+        job_id = client.post("/api/v1/analyze", headers=H, files={"file": ("v.mov", f, "video/quicktime")}).json()["job_id"]
+    wait_done(client, job_id)
+    d = client.get(f"/api/internal/jobs/{job_id}", headers=H).json()
+    v = d["violations"][0]
+    assert v["seen"] == "Тест." and v["why"] and v["law"]["act"] and v["frames"]
+    assert "elapsed_sec" in d

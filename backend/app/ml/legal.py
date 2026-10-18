@@ -40,3 +40,14 @@ def norm_text(code: str, rule_id: str | None = None) -> str:
     if not rule.get("verified"):
         text += " (требует проверки)"
     return text + "."
+
+
+def short_ref(rule_id: str) -> str:
+    """Compact reference for lists: '№231 п. 20', '№14 п. 8'; no clause -> 'внутр. документы'."""
+    d = load()
+    rule = d["rules_by_id"][rule_id]
+    num = "№" + rule["document"].split("_")[-1]
+    clause = rule.get("clause", "")
+    if not clause:
+        return "внутр. документы" if rule.get("suffix") else num
+    return f"{num} {clause.split(',')[0]}"
